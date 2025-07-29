@@ -32,7 +32,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 # Create Gemini LLM for CrewAI
 class GeminiLLM(LLM):
     def __init__(self):
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('models/gemini-2.5-pro')
     
     def call(self, messages, **kwargs):
         try:
