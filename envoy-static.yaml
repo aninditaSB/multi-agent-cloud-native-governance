@@ -18,6 +18,7 @@ data:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
               stat_prefix: ingress_http
+              request_timeout: 600s     # Wait up to 10 minutes for backend reply
               route_config:
                 name: local_route
                 virtual_hosts:
@@ -26,18 +27,34 @@ data:
                   routes:
                   - match:
                       prefix: "/orchestrate"
-                    direct_response:
-                      status: 403
-                      body:
-                        inline_string: "🛡️ Blocked by static Envoy direct response"
+                    route:
+                      cluster: ai_service
+                      timeout: 600s      # Route-specific timeout also set to 10 min
                   - match:
                       prefix: "/"
                     route:
                       cluster: ai_service
               http_filters:
+              - name: envoy.filters.http.lua
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                  inline_code: |
+                    function envoy_on_request(request_handle)
+                      local body = ""
+                      if request_handle:body() ~= nil then
+                        body = request_handle:body():getBytes(0, request_handle:body():length())
+                      end
+                      if body ~= nil and string.find(string.lower(body), "hack") then
+                        request_handle:respond(
+                          {[":status"] = "403"},
+                          "🛡️ Blocked by Envoy Lua guardrail: forbidden word detected"
+                        )
+                      end
+                    end
               - name: envoy.filters.http.router
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
       clusters:
       - name: ai_service
         connect_timeout: 30s
