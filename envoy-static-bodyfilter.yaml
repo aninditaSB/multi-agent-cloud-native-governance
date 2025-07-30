@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kgateway-envoy-config
+  namespace: kgateway-system
+data:
+  envoy.yaml: |
+    static_resources:
+      listeners:
+      - name: listener_0
+        address:
+          socket_address:
+            address: 0.0.0.0
+            port_value: 8080
+        filter_chains:
+        - filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              stat_prefix: ingress_http
+              request_timeout: 600s             # <--- 10 minutes for all requests
+              route_config:
+                name: local_route
+                virtual_hosts:
+                - name: local_service
+                  domains: ["*"]
+                  routes:
+                  - match:
+                      prefix: "/orchestrate"
+                    route:
+                      cluster: ai_service
+                      timeout: 600s            # <--- 10 minutes just for /orchestrate
+                  - match:
+                      prefix: "/"
+                    route:
+                      cluster: ai_service
+              http_filters:
+              - name: envoy.filters.http.lua
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                  inline_code: |
+                    function envoy_on_request(request_handle)
+                      local body = ""
+                      if request_handle:body() ~= nil then
+                        body = request_handle:body():getBytes(0, request_handle:body():length())
+                      end
+                      if body ~= nil and string.find(string.lower(body), "hack") then
+                        request_handle:respond(
+                          {[":status"] = "403"},
+                          "🛡️ Blocked by Envoy Lua guardrail: forbidden word detected"
+                        )
+                      end
+                    end
+              - name: envoy.filters.http.router
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      clusters:
+      - name: ai_service
+        connect_timeout: 30s
+        type: LOGICAL_DNS
+        load_assignment:
+          cluster_name: ai_service
+          endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: multi-agent-demo-service.default.svc.cluster.local
+                      port_value: 8080
