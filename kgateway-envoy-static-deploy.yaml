@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kgateway-envoy-proxy
+  namespace: kgateway-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kgateway-envoy-proxy
+  template:
+    metadata:
+      labels:
+        app: kgateway-envoy-proxy
+    spec:
+      containers:
+      - name: envoy
+        image: envoyproxy/envoy:v1.29-latest
+        ports:
+        - containerPort: 8080
+        command:
+        - /usr/local/bin/envoy
+        - -c
+        - /etc/envoy/envoy.yaml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/envoy
+      volumes:
+      - name: config
+        configMap:
+          name: kgateway-envoy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kgateway-envoy-proxy
+  namespace: kgateway-system
+spec:
+  selector:
+    app: kgateway-envoy-proxy
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: ClusterIP
