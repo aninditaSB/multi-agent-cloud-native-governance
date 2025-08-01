@@ -1,114 +1,60 @@
-# AI Quality Monitoring Demo with Cloud-Native Stack
 
-A demonstration system implementing AI quality monitoring and governance infrastructure using modern cloud-native technologies.
+### AI Quality Monitoring Demo with Cloud-Native Stack
+
+A demonstration system for securing AI APIs with policy-enforcing proxies using modern cloud-native infrastructure.
+
+## 🔒 Use Case Demonstrated: Secure AI Text Enrichment for Internal Teams
+
+This demo showcases a secure LLM-backed API that analyzes internal text inputs (e.g., support issues) **only after passing through an Envoy proxy configured with a Lua-based dynamic guardrail**.
+The guardrail performs **pre-inference input validation** by inspecting raw payloads and blocking sensitive information such as **Social Security Numbers (SSNs)** before the request reaches the AI backend.
+
+Two types of requests are demonstrated:
+
+* A **positive case** with a legitimate inquiry, which is allowed and processed.
+* A **negative case** containing an SSN pattern, which is intercepted and blocked with a `403` response.
+
+---
 
 ## Architecture
 
-- **FastAPI Service**: AI processing simulation with realistic metrics
-- **Prometheus**: Real-time metrics collection and monitoring
-- **Grafana**: Live visualization dashboards
-- **Kubernetes**: Container orchestration and scaling
-- **Istio**: Service mesh integration
+* **Envoy Proxy**: Intercepts and inspects incoming requests via Lua filters
+* **FastAPI**: Simulated AI agent backend with natural language task processing
+* **Kubernetes**: Deployment and orchestration of the proxy and backend
+* **cURL**: Used for demonstration of both allowed and blocked input flows
 
-## Metrics Collected
+---
 
-- `agent_helpfulness_score` - AI response quality scoring
-- `agent_transparency_score` - Response clarity assessment  
-- `agent_requests_total` - Request volume tracking
+## How the System Works
 
-## Quick Start
+1. **Clients send input** (text and task type) via HTTP POST to the API.
+2. **Envoy proxy** (configured with Lua guardrail) inspects request body.
+3. If request contains **PII (like SSNs)**, the proxy **blocks it with a 403**.
+4. If clean, it is forwarded to the **FastAPI-based AI agent backend** for processing.
 
-### Deploy to Minikube
+---
 
-Build and deploy all services
-eval $(minikube docker-env)
-docker build -t multi-agent-demo:latest .
-kubectl apply -f deployment.yaml
+## Example Commands
 
-Wait for deployment
-kubectl wait --for=condition=available --timeout=300s deployment/multi-agent-demo
-kubectl wait --for=condition=available --timeout=300s deployment/prometheus
-kubectl wait --for=condition=available --timeout=300s deployment/grafana
+### ✅ Valid Request (Allowed)
 
-Access services
-kubectl port-forward service/multi-agent-demo-service 8080:8080 &
-kubectl port-forward service/prometheus-service 9090:9090 &
-kubectl port-forward service/grafana-service 3000:3000 &
+```bash
+curl -i -X POST http://localhost:8080/orchestrate \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Our application crashes when uploading large files over 2GB. Can you find the key issue?","task_type":"analyze"}'
+```
 
-text
+### ❌ Invalid Request (Blocked – Contains SSN)
 
-### Test the System
+```bash
+curl -i -X POST http://localhost:8080/orchestrate \
+  -H "Content-Type: application/json" \
+  -d '{"text":"My SSN is 123-45-6789, please handle this case","task_type":"analyze"}'
+```
 
-Health check
-curl "http://localhost:8080/health"
+---
 
-Process text input
-curl -X POST "http://localhost:8080/orchestrate"
--H "Content-Type: application/json"
--d '{"text": "Analyze this input text"}'
+## Deployment Notes
 
-View metrics
-curl "http://localhost:8080/metrics"
-
-text
-
-## Access Points
-
-- **API Service**: http://localhost:8080
-- **Prometheus**: http://localhost:9090  
-- **Grafana**: http://localhost:3000 (admin/admin)
-
-## Key Features
-
-**Infrastructure**
-- Complete Kubernetes deployment with multi-service orchestration
-- Integrated Prometheus monitoring with custom metrics
-- Real-time Grafana dashboards with live data updates
-- Istio service mesh for enhanced networking and observability
-
-**Monitoring Capabilities**
-- Live quality score tracking and visualization
-- Request volume and performance metrics
-- Health monitoring and alerting capabilities
-- Time-series data collection for trend analysis
-
-**Cloud-Native Patterns**
-- Microservices architecture with proper separation of concerns
-- Container-based deployment with resource management
-- Service discovery and load balancing
-- Scalable monitoring and observability stack
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|---------|-------------|
-| `/` | GET | Service information |
-| `/health` | GET | Health status |
-| `/orchestrate` | POST | Text processing |
-| `/metrics` | GET | Prometheus metrics |
-
-## Dashboard Setup
-
-1. Access Grafana at http://localhost:3000
-2. Add Prometheus data source: `http://prometheus-service:9090`
-3. Create panels with queries:
-   - `agent_helpfulness_score`
-   - `agent_transparency_score`
-   - `rate(agent_requests_total[1m])`
-
-## Technology Stack
-
-- **FastAPI** - High-performance web framework
-- **Prometheus** - Metrics collection and alerting
-- **Grafana** - Data visualization and dashboards
-- **Kubernetes** - Container orchestration
-- **Istio** - Service mesh networking
-- **Docker** - Containerization
-
-## Use Cases
-- Monitoring infrastructure testing and validation
-- Cloud-native architecture prototyping
-- AI governance framework development
-- Observability stack implementation
-
-
+* **Static Envoy Configuration** is used to guarantee enforcement even without dynamic control plane (xDS).
+* `kgateway` (formerly part of Gloo Gateway) was not used due to lack of working xDS connectivity between its control plane and the Envoy data plane.
+* This direct Envoy setup ensures reproducible, CNCF-friendly policy enforcement via ConfigMap-mounted YAML.
