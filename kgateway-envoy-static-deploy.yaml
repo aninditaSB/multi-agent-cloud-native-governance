@@ -18,17 +18,39 @@ spec:
         image: envoyproxy/envoy:v1.29-latest
         ports:
         - containerPort: 8080
+        - containerPort: 9901  # Admin interface
         command:
         - /usr/local/bin/envoy
         - -c
         - /etc/envoy/envoy.yaml
+        - --log-level
+        - debug
         volumeMounts:
         - name: config
           mountPath: /etc/envoy
+        - name: lua-scripts
+          mountPath: /etc/envoy/lua
+          readOnly: true
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 9901
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 9901
+          initialDelaySeconds: 10
+          periodSeconds: 20
       volumes:
       - name: config
         configMap:
           name: kgateway-envoy-config
+      - name: lua-scripts
+        configMap:
+          name: envoy-lua-scripts
+
 ---
 apiVersion: v1
 kind: Service
